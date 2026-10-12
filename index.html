@@ -1,0 +1,195 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Text to Image</title>
+<style>
+  /* Chalk marketing palette: green-1 ground, chartreuse primary, mint accents. */
+  :root { --bg:#224A41; --panel:#1C3B34; --line:#32645B; --ink:#EFF5F3; --muted:#B9CFC7;
+          --accent:#BBD96D; --mint:#70CD96; --warn:#F8947F;
+          --mono:ui-monospace,"SFMono-Regular",Menlo,monospace; }
+  * { box-sizing:border-box; }
+  body { margin:0; min-height:100vh; background:var(--bg); color:var(--ink);
+         font:16px/1.5 system-ui,-apple-system,"Segoe UI",sans-serif;
+         display:flex; flex-direction:column; align-items:center; padding:32px 16px; gap:18px; }
+  html.embed body { padding:24px; min-height:0; }
+  html.embed h1, html.embed .sub { display:none; }
+  h1 { font-size:22px; font-weight:500; margin:0; letter-spacing:-0.3px; }
+  .sub { color:var(--muted); font-size:14px; margin-top:-10px; }
+  .wrap { width:100%; max-width:860px; display:grid; grid-template-columns:minmax(0,1fr) minmax(0,1fr);
+          gap:20px; align-items:start; }
+  @media (max-width:720px) { .wrap { grid-template-columns:1fr; } }
+  form { display:flex; flex-direction:column; gap:12px; }
+  label { font:12px/18px var(--mono); text-transform:uppercase; letter-spacing:.06em; color:var(--muted); }
+  textarea { width:100%; min-height:120px; resize:vertical; background:var(--panel); color:var(--ink);
+             border:1px solid var(--line); border-radius:4px; padding:12px 14px; font:inherit; }
+  textarea:focus { outline:none; border-color:var(--mint); }
+  .row { display:flex; gap:10px; flex-wrap:wrap; align-items:center; }
+  button { font:13px/15px var(--mono); text-transform:uppercase; letter-spacing:.06em;
+           border:1px solid var(--accent); border-radius:20px; padding:12px 22px; cursor:pointer;
+           background:var(--accent); color:var(--bg); transition:background .15s,color .15s; }
+  button:hover:not(:disabled) { background:transparent; color:var(--accent); }
+  button.ghost { background:transparent; color:var(--muted); border-color:var(--line); }
+  button.ghost:hover:not(:disabled) { color:var(--ink); border-color:var(--muted); }
+  button:disabled { opacity:.5; cursor:default; }
+  .chips { display:flex; flex-wrap:wrap; gap:8px; }
+  .chip { font:12px/16px var(--mono); text-align:left; padding:6px 10px; border-radius:14px; border:1px solid var(--line);
+          background:transparent; color:var(--muted); text-transform:none; letter-spacing:0; }
+  .chip:hover:not(:disabled) { color:var(--ink); border-color:var(--mint); background:transparent; }
+  #count { font:12px var(--mono); color:var(--muted); margin-left:auto; }
+  .frame { position:relative; aspect-ratio:1/1; width:100%; background:var(--panel);
+           border:1px solid var(--line); border-radius:4px; overflow:hidden; }
+  .frame img { width:100%; height:100%; object-fit:cover; display:block; }
+  .frame .empty { position:absolute; inset:0; display:flex; align-items:center; justify-content:center;
+                  padding:24px; text-align:center; color:var(--muted); font-size:14px; }
+  /* While generating: a drifting noise field, the way a diffusion model starts. */
+  .frame.busy::after { content:""; position:absolute; inset:0; opacity:.55;
+    background-image:url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='160' height='160'><filter id='n'><feTurbulence type='fractalNoise' baseFrequency='.9' numOctaves='2'/><feColorMatrix values='0 0 0 0 .44  0 0 0 0 .8  0 0 0 0 .59  0 0 0 .9 0'/></filter><rect width='160' height='160' filter='url(%23n)'/></svg>");
+    animation:noise .25s steps(4) infinite; }
+  @keyframes noise { 0%{background-position:0 0} 25%{background-position:-40px 20px}
+                     50%{background-position:30px -30px} 75%{background-position:-20px -40px} }
+  #meta { font:12px/18px var(--mono); color:var(--muted); min-height:18px; display:flex; gap:14px; flex-wrap:wrap; }
+  #meta b { color:var(--mint); font-weight:400; }
+  #meta a { color:var(--accent); text-decoration:none; margin-left:auto; }
+  #error { color:var(--warn); font-size:14px; min-height:21px; }
+  #history { display:grid; grid-template-columns:repeat(6,1fr); gap:6px; }
+  #history img { width:100%; aspect-ratio:1/1; object-fit:cover; border-radius:3px; cursor:pointer;
+                 border:1px solid var(--line); opacity:.8; }
+  #history img:hover, #history img.on { opacity:1; border-color:var(--mint); }
+</style>
+<script>
+  if (new URLSearchParams(location.search).has("embed")) document.documentElement.classList.add("embed");
+</script>
+</head>
+<body>
+  <h1>Text to image</h1>
+  <div class="sub">SDXL + SDXL-Lightning (4 steps) on a Chalk GPU scaling group</div>
+  <div class="wrap">
+    <form id="form">
+      <label for="prompt">Describe an image</label>
+      <textarea id="prompt" maxlength="300" placeholder="A lighthouse on a cliff at sunrise, oil painting"></textarea>
+      <div class="row">
+        <button id="go" type="submit">Generate</button>
+        <button id="again" class="ghost" type="button" disabled>New seed</button>
+        <span id="count">0 / 300</span>
+      </div>
+      <div class="chips" id="chips"></div>
+      <div id="error" role="alert"></div>
+    </form>
+    <div style="display:flex;flex-direction:column;gap:10px">
+      <div class="frame" id="frame"><div class="empty" id="empty">Your image appears here, usually in about two seconds.</div></div>
+      <div id="meta"></div>
+      <div id="history"></div>
+    </div>
+  </div>
+<script>
+const EXAMPLES = [
+  "A red fox in a snowy birch forest at golden hour, photograph",
+  "Isometric pixel-art coffee shop on a rainy street at night",
+  "A watercolor map of an imaginary archipelago",
+  "Macro photo of a dew-covered leaf, shallow depth of field",
+  "A retro-futuristic train crossing a desert canyon, poster art",
+];
+const $ = (id) => document.getElementById(id);
+const prompt = $("prompt"), go = $("go"), again = $("again"), frame = $("frame");
+let last = null;          // { prompt, seed } of the image on screen
+let busy = false;
+
+for (const text of EXAMPLES) {
+  const b = document.createElement("button");
+  b.type = "button";
+  b.className = "chip";
+  b.textContent = text;
+  b.onclick = () => { prompt.value = text; updateCount(); generate(); };
+  $("chips").appendChild(b);
+}
+
+function updateCount() { $("count").textContent = `${prompt.value.length} / 300`; }
+prompt.addEventListener("input", updateCount);
+prompt.addEventListener("keydown", (e) => {
+  if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) { e.preventDefault(); generate(); }
+});
+
+function setBusy(b) {
+  busy = b;
+  frame.classList.toggle("busy", b);
+  document.querySelectorAll("button").forEach((el) => { el.disabled = b; });
+  if (!b) again.disabled = last == null;
+  go.textContent = b ? "Generating…" : "Generate";
+}
+
+function show(entry) {
+  frame.querySelector("img")?.remove();
+  $("empty").style.display = "none";
+  const img = new Image();
+  img.src = entry.image;
+  img.alt = entry.prompt;
+  frame.appendChild(img);
+  last = { prompt: entry.prompt, seed: entry.seed };
+  const meta = $("meta");
+  meta.innerHTML = "";
+  const parts = [
+    ["GPU", `${(entry.infer_ms / 1000).toFixed(2)}s`],
+    ["steps", entry.steps],
+    ["seed", entry.seed],
+    ["size", `${entry.width}×${entry.height}`],
+  ];
+  for (const [k, v] of parts) {
+    const s = document.createElement("span");
+    s.append(`${k} `);
+    const b = document.createElement("b");
+    b.textContent = v;
+    s.append(b);
+    meta.append(s);
+  }
+  const dl = document.createElement("a");
+  dl.href = entry.image;
+  dl.download = `chalk-${entry.seed}.webp`;
+  dl.textContent = "Download ↓";
+  meta.append(dl);
+  document.querySelectorAll("#history img").forEach((el) => el.classList.toggle("on", el.dataset.seed == entry.seed));
+}
+
+function remember(entry) {
+  const h = $("history");
+  const t = new Image();
+  t.src = entry.image;
+  t.alt = entry.prompt;
+  t.title = entry.prompt;
+  t.dataset.seed = entry.seed;
+  t.onclick = () => show(entry);
+  h.prepend(t);
+  while (h.children.length > 6) h.lastChild.remove();
+}
+
+async function generate(seed) {
+  const text = prompt.value.trim();
+  if (!text || busy) { if (!text) prompt.focus(); return; }
+  $("error").textContent = "";
+  setBusy(true);
+  try {
+    const res = await fetch(new URL("generate", location.href), {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ prompt: text, seed: seed ?? null }),
+    });
+    const body = await res.json().catch(() => ({ error: `HTTP ${res.status}` }));
+    if (!res.ok) throw new Error(body.error || `HTTP ${res.status}`);
+    const entry = { ...body, prompt: text };
+    remember(entry);
+    show(entry);
+  } catch (e) {
+    $("error").textContent = e.message;
+  } finally {
+    setBusy(false);
+  }
+}
+
+$("form").onsubmit = (e) => { e.preventDefault(); generate(); };
+again.onclick = () => {
+  if (last) { prompt.value = last.prompt; updateCount(); generate(); }
+};
+</script>
+</body>
+</html>
