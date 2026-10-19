@@ -24,7 +24,7 @@ prompt ──POST /generate──▶ GPU replica: prompt filter → SDXL-Lightni
 ## Run it
 
 You need [`uv`](https://docs.astral.sh/uv/) and a Chalk environment that can schedule GPU workloads.
-Credentials come from `chalk config` in the current directory. You can also set `CHALK_API_SERVER`,
+Credentials come from the SDK’s ambient credentials from `chalk login`. You can also set `CHALK_API_SERVER`,
 `CHALK_CLIENT_ID`, `CHALK_CLIENT_SECRET` and `CHALK_ENVIRONMENT_ID` yourself.
 
 ```bash
@@ -97,3 +97,10 @@ pointing real traffic at your own deployment.
 The code is Apache-2.0. SDXL base 1.0 and SDXL-Lightning are released under the CreativeML
 OpenRAIL++-M license, whose use restrictions apply to the images you generate. The fp16 VAE is MIT
 and the safety classifier is Apache-2.0.
+
+## Local authentication
+
+The SDK reads credentials, API host, and the selected environment from your existing
+`chalk login` in `~/.chalk.yml`, including project-scoped and default logins.
+For unattended runs, `CHALK_CLIENT_ID` and `CHALK_CLIENT_SECRET` remain supported. Where available, `--env-id`
+overrides the target environment; otherwise the SDK uses your login or environment settings.
