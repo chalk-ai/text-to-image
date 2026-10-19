@@ -10,14 +10,12 @@ One replica holds SDXL with the SDXL-Lightning UNet on one GPU and serves both t
 the /generate API, so the browser's requests are same-origin.
 
 Credentials come from your existing `chalk login` (or the CHALK_* env vars):
-    ./deploy.py [--env-id <environment>] [--gpu nvidia-l4]
+    ./deploy.py
 Then open the printed URL and describe an image.
 """
 
 from __future__ import annotations
 
-import argparse
-import os
 import time
 from pathlib import Path
 
@@ -26,16 +24,6 @@ MODELS_DIR = "/models"
 
 
 def main() -> None:
-    parser = argparse.ArgumentParser()
-    parser.add_argument("--name", default="text-to-image")
-    # Defaults to the environment in your existing `chalk login` (or CHALK_ENVIRONMENT_ID).
-    parser.add_argument("--env-id", default=None)
-    parser.add_argument("--gpu", default="nvidia-l4")
-    parser.add_argument("--ready-timeout", type=float, default=1800.0)
-    args = parser.parse_args()
-
-    if args.env_id:
-        os.environ["CHALK_ENVIRONMENT"] = args.env_id
     from chalkcompute import Image, ReadinessProbe, ScalingGroup
 
     image = (
@@ -64,8 +52,8 @@ def main() -> None:
 
     sg = ScalingGroup(
         image=image,
-        name=args.name,
-        gpu=args.gpu,
+        name='text-to-image',
+        gpu='nvidia-l4',
         cpu="4",
         memory="16Gi",
         env={"PORT": "8080"},
@@ -81,7 +69,7 @@ def main() -> None:
     )
     t0 = time.monotonic()
     try:
-        sg.deploy(build_timeout=2400.0, ready_timeout=args.ready_timeout)
+        sg.deploy(build_timeout=2400.0, ready_timeout=1800.0)
     finally:
         print(f"deploy returned after {time.monotonic() - t0:.0f}s")
     print("web_url:", sg.web_url)
